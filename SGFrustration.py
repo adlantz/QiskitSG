@@ -18,8 +18,6 @@ from qiskit.visualization import plot_histogram
 
 
 def main():
-
-    # J_matrix = np.array([np.array([0,1,-1,-1]),np.array([1,0,-1,-1]),np.array([-1,-1,0,1]),np.array([-1,-1,1,0])])
     # print(J_matrix)
     N = int(input("Number of spins/qubits: "))
     clause_list = clause_list_maker(N)
@@ -58,7 +56,7 @@ def main():
 
     # Measure the variable qubits
     # qc.measure(clause_qubits, cbits)
-    # qc.snapshot("clause_qubits", qubits=[1,2,3,4,5,6,7])
+
 
 
     
@@ -97,21 +95,6 @@ def main():
     outputstate = result.get_statevector(qc)
     probstate = np.multiply(outputstate,np.conj(outputstate)).real
 
-    # snapshots = result.data()['snapshots']['statevector']
-    # substate = snapshots['clause_qubits'][0]
-    # subprobstate = np.multiply(substate,np.conj(substate)).real
-
-    # subsolpa = subprobstate[len(subprobstate) - 1]
-
-    # i=0
-    # j=1
-    # subbcarray=[]
-    # for s in subprobstate:
-    #     if s > 0.9*subsolpa:
-    #         print(str(j) +".",'{0:011b}'.format(i)[1:],s)
-    #         subbcarray.append('{0:011b}'.format(i)[1:7])
-    #         j+=1
-    #     i+=1
     probampdict = {}
     bs = '{0:0' + str(cqb) + 'b}'
     for i in range(2**cqb):
@@ -123,11 +106,10 @@ def main():
         probampdict[fbs.format(i)[1:(cqb+1)]] += ops
         i+=1
 
-    # print(probampdict)
+
 
     solpa = probampdict[bs.format((2**(cqb) - 1))]
 
-    # print(solpa)
 
     i=0
     j=1
@@ -141,31 +123,6 @@ def main():
     
 
 
-    # solpa = probstate[len(probstate) - 1]
-
-    # i=0
-    # j=1
-    # bcarray=[]
-    # for s in probstate:
-    #     if s > 0.9*solpa:
-    #         print(str(j) +".",'{0:011b}'.format(i)[1:7],s)
-    #         bcarray.append('{0:011b}'.format(i)[1:7])
-    #         j+=1
-    #     i+=1
-
-
-    # qasm_simulator = Aer.get_backend('qasm_simulator')
-    # result = execute(qc, backend=qasm_simulator, shots=1024).result()
-    # i=1
-    # print("Bond configurations with no frustration:")
-    # print("configuration | probability (%) of measurement")
-    # bcarray=[]
-    # for key in result.get_counts():
-    #     count = result.get_counts()[key]
-    #     if count > 50:
-    #          print(str(i) + ".  " + str((key,count*100/1024)))
-    #          bcarray.append(key)
-    #          i+=1
 
     viz = True
     invld = False
