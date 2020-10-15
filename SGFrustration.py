@@ -18,26 +18,26 @@ from qiskit.visualization import plot_histogram
 
 
 def main():
-    # print(J_matrix)
+    #Get number of spins
     N = int(input("Number of spins/qubits: "))
-    clause_list = clause_list_maker(N)
-    cqb = len(clause_list)
-    # print(clause_list)
+    bond_list = bond_list_maker(N)
+    bqb = len(bond_list)
 
-    # t_qubits = QuantumRegister(cqb, name='t')
-    var_qubits = QuantumRegister(N, name='v')
-    clause_qubits = QuantumRegister(cqb, name='c')
+
+    #Build requisite quantum and classical registers
+    spin_qubits = QuantumRegister(N, name='v')
+    bond_qubits = QuantumRegister(bqb, name='c')
     output_qubit = QuantumRegister(1, name='out')
-    cbits = ClassicalRegister(cqb, name='cbits')
-    qc = QuantumCircuit(var_qubits, clause_qubits, output_qubit, cbits)
+    cbits = ClassicalRegister(bqb, name='cbits')
+    qc = QuantumCircuit(spin_qubits, bond_qubits, output_qubit, cbits)
 
 
     # Initialise 'out0' in state |->
     qc.initialize([1, -1]/np.sqrt(2), output_qubit)
 
     # Initialise qubits in state |s>
-    qc.h(var_qubits)
-    qc.h(clause_qubits)
+    qc.h(spin_qubits)
+    qc.h(bond_qubits)
     # qc.h(t_qubits)
     qc.barrier()  # for visual separation
 
@@ -48,14 +48,14 @@ def main():
     else:
     	loopnumber = 25
     for i in range(loopnumber):
-        SG_oracle(qc, clause_list, var_qubits, clause_qubits, cbits, output_qubit)
+        SG_oracle(qc, bond_list, spin_qubits, bond_qubits, cbits, output_qubit)
         qc.barrier()  # for visual separation
         # Apply our diffuser
-        qc.append(diffuser(cqb), clause_qubits)
+        qc.append(diffuser(bqb), bond_qubits)
 
 
     # Measure the variable qubits
-    # qc.measure(clause_qubits, cbits)
+    # qc.measure(bond_qubits, cbits)
 
 
 
@@ -96,19 +96,19 @@ def main():
     probstate = np.multiply(outputstate,np.conj(outputstate)).real
 
     probampdict = {}
-    bs = '{0:0' + str(cqb) + 'b}'
-    for i in range(2**cqb):
+    bs = '{0:0' + str(bqb) + 'b}'
+    for i in range(2**bqb):
         probampdict[bs.format(i)] = 0
 
     i = 0
-    fbs = '{0:0' + str(cqb + N + 1) + 'b}'
+    fbs = '{0:0' + str(bqb + N + 1) + 'b}'
     for ops in probstate:
-        probampdict[fbs.format(i)[1:(cqb+1)]] += ops
+        probampdict[fbs.format(i)[1:(bqb+1)]] += ops
         i+=1
 
 
 
-    solpa = probampdict[bs.format((2**(cqb) - 1))]
+    solpa = probampdict[bs.format((2**(bqb) - 1))]
 
 
     i=0
@@ -151,7 +151,7 @@ def initialize_s(qc, qubits):
         qc.h(q)
     return qc
 
-def clause_list_maker(N):
+def bond_list_maker(N):
     return np.array([np.array(list(c)) for c in it.combinations([i for i in range(N)],2)])
 
 
@@ -190,20 +190,20 @@ def XNOR(qc, a, b, output):
     qc.x(output)
     qc.barrier()
 
-def SG_oracle(qc, clause_list, var_qubits, clause_qubits, cbits, output_qubit):
+def SG_oracle(qc, bond_list, spin_qubits, bond_qubits, cbits, output_qubit):
     # Compute clauses
     i = 0
-    for clause in clause_list:
-        XOR(qc, clause[0], clause[1], clause_qubits[i])
+    for clause in bond_list:
+        XOR(qc, clause[0], clause[1], bond_qubits[i])
         i += 1
 
     # Flip 'output' bit if all clauses are satisfied
-    qc.mct(clause_qubits, output_qubit)
+    qc.mct(bond_qubits, output_qubit)
 
     # Uncompute clauses to reset clause-checking bits to 0
     i = 0
-    for clause in clause_list:
-        XOR(qc, clause[0], clause[1], clause_qubits[i])
+    for clause in bond_list:
+        XOR(qc, clause[0], clause[1], bond_qubits[i])
         i += 1
 
 
