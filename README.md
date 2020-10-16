@@ -14,7 +14,7 @@ Open command line in the direcotry and run
 
 Then enter the number of spins (no fewer than 3, nor greater than 6) and follow the prompts. It'll give you a list of bond configurations that you can visualize. Just input the number in the list that corresponds to that configuration and it'll pop out a visualization. Close the visualization to return to the code and you can visualize another or quit.
 
-The bond configurations are stored as a list of 0s and 1s. 1 corresponds to ferromagnetic (same preferred) bonds, 0 corresponds to anti-ferromagnetic bonds (different prefferred). The farthest right digit is the bond between spins 0 and 1.
+The bond configurations are stored as a list of 0s and 1s. 1 corresponds to ferromagnetic (same preferred) bonds, 0 corresponds to anti-ferromagnetic bonds (different prefferred). The farthest left digit is the bond between spins 0 and 1.
 
 Here's an example of running it for a size six spin glass.
 
@@ -24,11 +24,12 @@ The visualization that pops out should look like this:
 
 <img src="https://github.com/adlantz/QiskitSG/blob/main/ReadMeImages/vizexample1.png" alt="vizexample" width="400"/>
 
-You can play around by changing the state of the spin glass by entering it into the state box at the bottom and pressing enter.
+The bond list tells you what digit in the bond configurations corresponds to what bond in the spin glass. In this example, the farthest left digit of the bond configuration is 0. Thus the bond between 1 and 0 is anti-ferromagnetic. You can play around by changing the state of the spin glass by entering it into the state box at the bottom and pressing enter. If you put in a state greater than 2^N it'll break.
 
 <img src="https://github.com/adlantz/QiskitSG/blob/main/ReadMeImages/excitedstatexample.png" alt="excitedexample" width="400"/>
+<img src="https://github.com/adlantz/QiskitSG/blob/main/ReadMeImages/excitedstatexample.png" alt="excitedexample" width="400"/>
 
-The dashed lines represent unsatisfied bonds. If you put in a state greater than 2^N it'll break.
+The dashed lines represent unsatisfied bonds. 
 
 For a basic overview of the spin glass problem see the section below.
 
