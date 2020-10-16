@@ -2,7 +2,7 @@
 
 In this code I used the grover search algorithm to find special instances of the spin problem where every bond can be satisfied. Then I give the option to visualize those instances. I'm not sure if this is useful at all, but I did it just to get some qiskit/quantum computing practice. 
 
-**I did not write all of this code.** I wrote everything in SGViz.py. The code in SGFrustration is a modified version of the IBM qiskit tutorial on the grover search algorithm to solve a simple sudoku puzzle. The code in tfim.py was written by someone else and used with permission.
+**I did not write all of this code.** I wrote everything in SGViz.py. The code in SGFrustration is a modified version of the IBM qiskit tutorial on the grover search algorithm. The code in tfim.py was written by someone else and used with permission.
 
 ## Getting it running
 
