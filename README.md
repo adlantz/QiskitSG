@@ -16,6 +16,20 @@ Then enter the number of spins (no fewer than 3, nor greater than 6) and follow 
 
 The bond configurations are stored as a list of 0s and 1s. 1 corresponds to ferromagnetic (same preferred) bonds, 0 corresponds to anti-ferromagnetic bonds (different prefferred). The farthest right digit is the bond between spins 0 and 1.
 
+Here's an example of running it for a size six spin glass.
+
+<img src="https://github.com/adlantz/QiskitSG/blob/main/ReadMeImages/runningexample.png" alt="RunExample" width="400"/>
+
+The visualization that pops out should look like this:
+
+<img src="https://github.com/adlantz/QiskitSG/blob/main/ReadMeImages/vizexample.png" alt="vizexample" width="400"/>
+
+You can play around by changing the state of the spin glass by entering it into the state box at the bottom and pressing enter.
+
+<img src="https://github.com/adlantz/QiskitSG/blob/main/ReadMeImages/excitedstatexample.png" alt="excitedexample" width="400"/>
+
+The dashed lines represent unsatisfied bonds. If you put in a state greater than 2^N it'll break.
+
 For a basic overview of the spin glass problem see the section below.
 
 ## The Spin Glass Problem
