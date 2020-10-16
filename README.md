@@ -27,7 +27,6 @@ The visualization that pops out should look like this:
 The bond list tells you what digit in the bond configurations corresponds to what bond in the spin glass. In this example, the farthest left digit of the bond configuration is 0. Thus the bond between 1 and 0 is anti-ferromagnetic. You can play around by changing the state of the spin glass by entering it into the state box at the bottom and pressing enter. If you put in a state greater than 2^N it'll break.
 
 <img src="https://github.com/adlantz/QiskitSG/blob/main/ReadMeImages/excitedstatexample.png" alt="excitedexample" width="400"/>
-<img src="https://github.com/adlantz/QiskitSG/blob/main/ReadMeImages/excitedstatexample.png" alt="excitedexample" width="400"/>
 
 The dashed lines represent unsatisfied bonds. 
 
