@@ -42,6 +42,7 @@ def main():
     qc.barrier()  # for visual separation
 
 
+    # Determine how many times to loop Uw/Us operators
     loopdict = {3:2, 4:6, 5:24}
     if N in loopdict:
     	loopnumber = loopdict[N]
@@ -59,7 +60,7 @@ def main():
 
 
 
-    
+    #Print/Save circuit interface
     asking=True
     while(asking):
         prntqc = input("Print Circuit? (y/n)")
@@ -88,13 +89,15 @@ def main():
 
     print("Simulating quantum circuit...")
 
-
+    # Send circuit to backend
     backend = Aer.get_backend('statevector_simulator')
     job = execute(qc, backend)
     result = job.result()
     outputstate = result.get_statevector(qc)
     probstate = np.multiply(outputstate,np.conj(outputstate)).real
 
+
+    #get most probable states out of quantum state after algorithm has run
     probampdict = {}
     bs = '{0:0' + str(bqb) + 'b}'
     for i in range(2**bqb):
@@ -123,7 +126,7 @@ def main():
     
 
 
-
+    #Give the option to visualize bond configurations using SGViz.py 
     viz = True
     invld = False
     while(viz):
