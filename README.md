@@ -16,7 +16,7 @@ Then enter the number of spins (no fewer than 3, nor greater than 6) and follow 
 
 The bond configurations are stored as a list of 0s and 1s. 1 corresponds to ferromagnetic (same preferred) bonds, 0 corresponds to anti-ferromagnetic bonds (different prefferred). The farthest right digit is the bond between spins 0 and 1.
 
-For a basic overview of the spin glass see the section below.
+For a basic overview of the spin glass problem see the section below.
 
 ## The Spin Glass Problem
 
