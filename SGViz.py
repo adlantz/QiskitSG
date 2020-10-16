@@ -111,6 +111,8 @@ class Window(QMainWindow):
 		self.Resizebutton = QPushButton('Resize', self)
 		self.Resizebutton.setStyleSheet("QPushButton {color: white; background-color: black}")
 		self.Resizebutton.clicked.connect(self.resizeMethod)
+		self.BCLabel = QLabel(self)
+		self.CLLabel = QLabel(self)
 
 
 
@@ -387,6 +389,18 @@ class Window(QMainWindow):
 		self.NLabel.setText("N: " + str(self.N ))
 		self.NLabel.move(0.02*self.Swidth,0.8*self.Sheight)
 		self.NLabel.resize(0.05*self.Swidth,0.043*self.Sheight)
+
+		self.BCLabel.setStyleSheet("color: black")
+		self.BCLabel.setFont(QFont('Decorative', fontsize))
+		self.BCLabel.setText("Bond Configuration: " + str(self.BC)[::-1])
+		self.BCLabel.move(0.7*self.Swidth,0.1*self.Sheight)
+		self.BCLabel.resize(0.3*self.Swidth,0.043*self.Sheight)
+
+		self.CLLabel.setStyleSheet("color: black")
+		self.CLLabel.setFont(QFont('Decorative', fontsize))
+		self.CLLabel.setText("Bond List:\n" + str(np.array([np.array(list(c)) for c in it.combinations([i for i in range(self.N)],2)])))
+		self.CLLabel.move(0.9*self.Swidth,0.15*self.Sheight)
+		self.CLLabel.resize(0.3*self.Swidth,1*self.Sheight)
 
 		
 

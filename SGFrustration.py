@@ -119,7 +119,7 @@ def main():
     bcarray=[]
     for key in probampdict:
         if probampdict[key] > 0.9*solpa:
-            print(str(j) +".",bs.format(i),probampdict[key])
+            print(str(j) +".",bs.format(i)[::-1],probampdict[key])
             bcarray.append(bs.format(i))
             j+=1
         i+=1
