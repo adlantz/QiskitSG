@@ -22,7 +22,7 @@ Here's an example of running it for a size six spin glass.
 
 The visualization that pops out should look like this:
 
-<img src="https://github.com/adlantz/QiskitSG/blob/main/ReadMeImages/vizexample.png" alt="vizexample" width="400"/>
+<img src="https://github.com/adlantz/QiskitSG/blob/main/ReadMeImages/runningexample.png" alt="vizexample" width="400"/>
 
 You can play around by changing the state of the spin glass by entering it into the state box at the bottom and pressing enter.
 
