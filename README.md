@@ -20,17 +20,17 @@ For a basic overview of the spin glass problem see the section below.
 
 ## The Spin Glass Problem
 
-Say you have a group of people, Alice, Bob, and Carol. Each give a sign that is orange on one side and blue on the other. They are also given a set of relationships between people. For instance the relationships could be
+Say you have a group of people, Alice, Bob, and Carol. Each is given a sign that is orange on one side and blue on the other. They are also given a set of relationships between people. For instance the relationships could be
 
 1. Alice and Bob: Same color
 2. Alice and Carol: Different color
 3. Bob and Carol: Different color
 
-The group then has to display the color that matches these criteria. In this example, Alice nad Bob try to display the same color as each other, and different from Carol. So a solution to this problem would be that Alice and Bob display blue and Carol displays orange. 
+The group then has to display the color that matches these criteria. In this example, Alice and Bob try to display the same color as each other, and different from Carol. So a solution to this problem would be that Alice and Bob display blue and Carol displays orange. 
 
 <img src="https://github.com/adlantz/QiskitSG/blob/main/ReadMeImages/nonfrust.png" alt="NotFrustrated" width="400"/>
 
-However, sometimes they're given relationships which can't be full satified. For instance
+However, sometimes they're given relationships which can't be fully satisfied. For instance
 
 1. Alice and Bob: Same color
 2. Alice and Carol: Different color
@@ -48,4 +48,4 @@ When mathematicians/computer scientists talk about this problem they turn it all
 
 So why is the spin glass problem important? It turns out that it's really hard to solve as the number of people/spins grows. For N people, there are 2^N different ways the people could display their colors. Computer scientists are interested in hard problems like this because learning efficient ways to solve them can have practical applications to many other difficult problems to solve in the real world. They're also interesting and scientists' masochism lead them to problems that will make them bang their head against the wall.
 
-In this code I am not solving the spin glass problem. I am just using a quantum computing algorithm (simulated using qiskit) called the grover search algorithm to find every instance of the spin glass problem of a particular size that has no frustration. I'm not sure if this is useful at all, but I did it just to get some qiskit/quantum computing practice. 
+In this code I am not solving the spin glass problem. I am just using a quantum computing algorithm (simulated using qiskit) called the grover search algorithm to find every instance of the spin glass problem of a particular size that has no frustration. I'm not sure if this is useful at all, but I did it just to get some qiskit/quantum computing practice. Also by fully connected I mean every spin has bond with every other spin.
