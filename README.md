@@ -6,11 +6,11 @@ In this code I used the grover search algorithm to find special instances of the
 
 ## Getting it running
 
-Runs on python3. Make sure to install (with pip or something) qiskit, PyQt5, and matplotlib. This also uses numpy, scipy, itertools, progressbar, os, sys, threading, and argparse.
+Runs with Python CLI.
 
-Open command line in the direcotry and run 
+`pip install -r requirements.txt`
 
-`python3 SGFrustration.py`
+`python SGFrustration.py`
 
 Then enter the number of spins (no fewer than 3, nor greater than 6) and follow the prompts. It'll give you a list of bond configurations that you can visualize. Just input the number in the list that corresponds to that configuration and it'll pop out a visualization. Close the visualization to return to the code and you can visualize another or quit.
 
