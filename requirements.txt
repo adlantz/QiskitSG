@@ -1,0 +1,9 @@
+numpy
+scipy
+qiskit
+PyQt5
+matplotlib
+argparse
+progressbar
+qiskit-aer
+pylatexenc
