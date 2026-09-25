@@ -1,201 +1,166 @@
-# initialization
+"""Use Grover search to find unfrustrated bond configurations of a fully connected spin glass."""
+
 import itertools as it
-import os
-from typing import List
+import subprocess
+import sys
+from pathlib import Path
 
+from qiskit import QuantumCircuit, QuantumRegister, transpile
+from qiskit.circuit import Gate
+from qiskit_aer import AerSimulator
 
-# importing Qiskit
-from qiskit import (
-    Aer,
-    QuantumCircuit,
-    ClassicalRegister,
-    QuantumRegister,
-    transpile,
-)
-
-
-# import basic plot tools
-from qiskit.visualization import plot_histogram
-
-import pprint
-
-
+# Number of Grover iterations per system size, found by trial and error.
+# TODO: use quantum counting to find the number of solutions and derive this.
 LOOP_DICT = {3: 6, 4: 6, 5: 24}
+MIN_PROBABILITY = 1e-4
+SGVIZ = Path(__file__).with_name("SGViz.py")
 
 
 def main():
-    # Get number of spins
+    n = ask_num_spins()
+    bonds = list(it.combinations(range(n), 2))
+    qc = build_circuit(n, bonds)
+
+    if ask_yes_no("Print circuit?"):
+        print(qc.draw())
+    if ask_yes_no("Save circuit as png?"):
+        filename = f"N{n}_frust_qc.png"
+        qc.draw(output="mpl", filename=filename, style="iqp")
+        print(f"Saved to {Path(filename).resolve()}")
+
+    print("Simulating quantum circuit...")
+    solutions = find_solutions(qc, n, len(bonds))
+
+    print("Bond configurations with no frustration, and the spin states that solve them:")
+    for bond_config, (probability, spin_states) in solutions.items():
+        print(f"  {bond_config}  p={probability:.4f}  spins: {', '.join(spin_states)}")
+
+    # Give the option to visualize bond configurations using SGViz.py
+    example = next(iter(solutions))
     while True:
-        N = int(input("Number of spins/qubits: "))
-        if N in LOOP_DICT:
+        bond_config = input(
+            f"Bond configuration to visualize (e.g. {example}), or q to quit: "
+        ).strip()
+        if bond_config.lower() in ("q", "quit"):
+            print("Goodbye!")
             break
-        print(
-            f"Unable to calculate for this size. Possible sizes: {list(LOOP_DICT.keys())}"
-        )
+        if bond_config in solutions:
+            subprocess.run(
+                [sys.executable, SGVIZ, "-loadBC", "-BC", bond_config, "-N", str(n)]
+            )
+        else:
+            print("Not one of the configurations above.")
 
-    bond_list = bond_list_maker(N)
-    num_of_bonds = len(bond_list)
 
-    # Build requisite quantum and classical registers
-    spin_qubits = QuantumRegister(N, name="spin")
-    bond_qubits = QuantumRegister(num_of_bonds, name="bond")
+def ask_num_spins() -> int:
+    while True:
+        answer = input("Number of spins/qubits: ")
+        if answer.isdigit() and int(answer) in LOOP_DICT:
+            return int(answer)
+        print(f"Unable to calculate for this size. Possible sizes: {list(LOOP_DICT)}")
+
+
+def ask_yes_no(question: str) -> bool:
+    while True:
+        answer = input(f"{question} (y/n) ").strip().lower()
+        if answer in ("y", "yes"):
+            return True
+        if answer in ("n", "no"):
+            return False
+        print("Invalid input")
+
+
+def build_circuit(n: int, bonds: list[tuple[int, int]]) -> QuantumCircuit:
+    spin_qubits = QuantumRegister(n, name="spin")
+    bond_qubits = QuantumRegister(len(bonds), name="bond")
     multi_control_qubit = QuantumRegister(1, name="multi")
-    cbits = ClassicalRegister(num_of_bonds, name="cbit")
-    qc = QuantumCircuit(spin_qubits, bond_qubits, multi_control_qubit, cbits)
+    qc = QuantumCircuit(spin_qubits, bond_qubits, multi_control_qubit)
 
-    # Initialize multi control qubit to |-> state
+    # Initialize multi control qubit to |->
     qc.x(multi_control_qubit)
     qc.h(multi_control_qubit)
-    qc.barrier()  # for visual separation
+    qc.barrier()
 
-    # Initialise spin and bond qubits in state |++...+> (equal superposition)
+    # Put spin and bond qubits in equal superposition |++...+>
     qc.h(spin_qubits)
     qc.h(bond_qubits)
     qc.barrier()
 
-    # We don't know how many solutions there are so we can't calculate the optimal number of loops
-    # TODO: Implement quantum counting to find number of solutions
-    # Until we implement the above, we just use the LOOP_DICT dictionary I made from trial and error
-
-    loop_number = LOOP_DICT[N]
-
-    for _ in range(loop_number):
-        # Add the oracle - this adds a negative phase only to solutions
-        SG_oracle(qc, bond_list, bond_qubits, multi_control_qubit)
+    diffuser_gate = diffuser(len(bonds))
+    for _ in range(LOOP_DICT[n]):
+        # The oracle adds a negative phase only to solutions
+        sg_oracle(qc, bonds, spin_qubits, bond_qubits, multi_control_qubit)
         qc.barrier()
-        # Add the diffuser, this "reflects" the state vector around the equal superposition vector
-        # We make this a gate for legibility
-        qc.append(diffuser(num_of_bonds), bond_qubits)
+        # The diffuser reflects the state vector about the equal superposition
+        qc.append(diffuser_gate, bond_qubits)
 
-    # print(qc.draw())
+    return qc
 
-    # Measure the variable qubits
-    # qc.measure(bond_qubits, cbits)
 
-    # Print/Save circuit interface
-    while True:
-        prntqc = input("Print Circuit? (y/n)")
-        if prntqc == "y" or prntqc == "yes":
-            print(qc.draw())
-            break
-        elif prntqc.lower() in ("n", "no"):
-            break
-        else:
-            print("invalid input")
+def find_solutions(
+    qc: QuantumCircuit, n: int, num_bonds: int
+) -> dict[str, tuple[float, list[str]]]:
+    """Simulate the circuit and group likely outcomes by bond configuration.
 
-    while True:
-        sveqc = input("Save circuit as png? (y/n)")
-        if sveqc == "y" or sveqc == "yes":
-            print("saving to " + str(os.getcwd()))
-            qc.draw(output="mpl", filename="N" + str(N) + "_frust_qc.png", style="iqp")
-            break
-        elif sveqc.lower() in ("n", "no"):
-            break
-        else:
-            print("invalid input")
-
-    print("Simulating quantum circuit...")
-
-    # Send circuit to backend to get exact mathematical state of circuit before measuring
-    backend = Aer.get_backend("aer_simulator_statevector")
+    Returns {bond_config: (total probability, [spin states])}. Bitstrings are
+    little-endian, so the leftmost bond bit is the last bond.
+    """
+    backend = AerSimulator(method="statevector")
+    qc = qc.copy()
     qc.save_statevector()
-    result = backend.run(transpile(qc, backend)).result()
-    final_state_vector = result.get_statevector(qc)
+    state = backend.run(transpile(qc, backend)).result().get_statevector()
 
-    # Get probabilities of each bond + spin state combo
-    probabilities_dict = final_state_vector.probabilities_dict(
-        [i for i in range(N + num_of_bonds)]
-    )
-
-    # Consolidate most probable bonds and their solution spin states
-    output_obj = {}
-    for key in probabilities_dict:
-        if probabilities_dict[key] > 0.0001:
-            bond_state = key[:num_of_bonds]
-            spin_sate = key[0 - N :]
-            if bond_state not in output_obj:
-                output_obj[bond_state] = {
-                    "probability": probabilities_dict[key],
-                    "spin_states": [spin_sate],
-                }
-            else:
-                output_obj[bond_state]["probability"] += probabilities_dict[key]
-                output_obj[bond_state]["spin_states"].append(spin_sate)
-
-    print(
-        "Here are the bond states with no frustration and the spin states that solve them"
-    )
-    pprint.PrettyPrinter(indent=4).pprint(output_obj)
-
-    # Give the option to visualize bond configurations using SGViz.py
-    while True:
-        bond_config = input(
-            f"Input bond configuration from keys of object above (Example: {list(output_obj.keys())[0]}) to visualize (q to to quit): "
-        )
-        if bond_config.lower() in ("q", "quit"):
-            print("Goodbye!")
-            break
-        if bond_config in output_obj:
-            os.system("python3 SGViz.py -loadBC -BC " + bond_config + " -N " + str(N))
-        else:
-            print("not a valid input")
+    solutions = {}
+    for key, probability in state.probabilities_dict(range(n + num_bonds)).items():
+        if probability > MIN_PROBABILITY:
+            bond_config, spin_state = key[:num_bonds], key[num_bonds:]
+            total, spin_states = solutions.get(bond_config, (0.0, []))
+            solutions[bond_config] = (total + probability, spin_states + [spin_state])
+    return solutions
 
 
-def bond_list_maker(N: int) -> List[List[int]]:
-    # Given a set of spins, an ordered list of the form [ [a,b], [a,c], ...] where
-    # the ith element is a list of the two spins connected by the ith bond
-    return [list(c) for c in it.combinations([i for i in range(N)], 2)]
+def diffuser(num_qubits: int) -> Gate:
+    qc = QuantumCircuit(num_qubits)
+    # |s> -> |00..0> -> |11..1>
+    qc.h(range(num_qubits))
+    qc.x(range(num_qubits))
+    # Multi-controlled Z
+    qc.h(num_qubits - 1)
+    qc.mcx(list(range(num_qubits - 1)), num_qubits - 1)
+    qc.h(num_qubits - 1)
+    # |11..1> -> |00..0> -> |s>
+    qc.x(range(num_qubits))
+    qc.h(range(num_qubits))
+
+    gate = qc.to_gate()
+    gate.name = "$U_s$"
+    return gate
 
 
-def diffuser(nqubits: int):
-    qc = QuantumCircuit(nqubits)
-    # Apply transformation |s> -> |00..0> (H-gates)
-    for qubit in range(nqubits):
-        qc.h(qubit)
-    # Apply transformation |00..0> -> |11..1> (X-gates)
-    for qubit in range(nqubits):
-        qc.x(qubit)
-    # Do multi-controlled-Z gate
-    qc.h(nqubits - 1)
-    qc.mcx(list(range(nqubits - 1)), nqubits - 1)  # multi-controlled-toffoli
-    qc.h(nqubits - 1)
-    # Apply transformation |11..1> -> |00..0>
-    for qubit in range(nqubits):
-        qc.x(qubit)
-    # Apply transformation |00..0> -> |s>
-    for qubit in range(nqubits):
-        qc.h(qubit)
-    # Return the diffuser as a gate
-    U_s = qc.to_gate()
-    U_s.name = "$U_s$"
-    return U_s
-
-
-def XOR(qc, a, b, output):
+def xor(qc: QuantumCircuit, a, b, output):
     qc.cx(a, output)
     qc.cx(b, output)
     qc.barrier()
 
 
-def SG_oracle(
+def sg_oracle(
     qc: QuantumCircuit,
-    bond_list: List[List[int]],
+    bonds: list[tuple[int, int]],
+    spin_qubits: QuantumRegister,
     bond_qubits: QuantumRegister,
     multi_control_qubit: QuantumRegister,
 ):
-    # Add an XOR to each bond qubit such that if bond_i connects spin_a
-    # and spin_b, the bond_i qubit will become spin_a XOR spin_b
-    for i, clause in enumerate(bond_list):
-        XOR(qc, clause[0], clause[1], bond_qubits[i])
+    # bond_i ^= spin_a XOR spin_b, for each bond i connecting spins a and b
+    for (a, b), bond in zip(bonds, bond_qubits):
+        xor(qc, spin_qubits[a], spin_qubits[b], bond)
 
-    # Apply X gate to 'multicontrol' qubit if all clauses are satisfied
-    # This adds a negative phase to solution items only
+    # Flip the multi control qubit (in |->) if all bonds are satisfied,
+    # adding a negative phase to solutions only
     qc.mcx(bond_qubits, multi_control_qubit)
 
-    # Add the exact same XOR gates to "uncompute" and return bonds to original state
-    for i, clause in enumerate(bond_list):
-        XOR(qc, clause[0], clause[1], bond_qubits[i])
-        i += 1
+    # Uncompute to return the bond qubits to their original state
+    for (a, b), bond in zip(bonds, bond_qubits):
+        xor(qc, spin_qubits[a], spin_qubits[b], bond)
 
 
 if __name__ == "__main__":

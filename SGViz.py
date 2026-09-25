@@ -1,490 +1,336 @@
-import numpy as np
-import random
-import tfim
-import itertools as it
+"""Visualization of an infinite-dimensional Ising model spin glass."""
+
 import argparse
+import itertools as it
+import sys
 
-import threading
-import sys, os
-from PyQt5 import QtCore, QtWidgets
-from PyQt5.QtWidgets import QMainWindow, QWidget, QLabel, QLineEdit
-from PyQt5.QtWidgets import QPushButton
-from PyQt5.QtCore import QSize, QPointF
-from PyQt5.QtCore import Qt
-from PyQt5.QtGui import QPainter, QBrush, QPen, QFont, QColor
-from PyQt5.QtWidgets import QApplication
+import numpy as np
+from PyQt5.QtCore import QPointF, Qt
+from PyQt5.QtGui import QColor, QFont, QFontDatabase, QPainter, QPen
+from PyQt5.QtWidgets import (
+    QApplication,
+    QFrame,
+    QGridLayout,
+    QHBoxLayout,
+    QLabel,
+    QLayout,
+    QLineEdit,
+    QMainWindow,
+    QPushButton,
+    QVBoxLayout,
+    QWidget,
+)
 
+import tfim
 
-def main():
-    App = QApplication(sys.argv)
-    window = Window()
-    sys.exit(App.exec())
+# Set to True to color spins by bipartition
+SHOW_BIPARTITION = False
+
+SEED = 0
+# Logical canvas size; everything is laid out in these units and scaled to the window
+BASE_WIDTH = 1060
+BASE_HEIGHT = 750
+MARGIN = 16
+PANEL_WIDTH = 280
+CENTER = (680, 375)
+SPIN_RADIUS = 290
+LABEL_RADIUS = 350
+UI_FONTS = ["Helvetica Neue", "Segoe UI", "Arial"]
 
 
 class Window(QMainWindow):
-    def __init__(self):
-        QMainWindow.__init__(self)
+    def __init__(self, n, bond_config, load_bc):
+        super().__init__()
+        self.n = n
+        self.bonds = list(it.combinations(range(n), 2))
+        self.scale = 1.0
 
-        parser = argparse.ArgumentParser(
-            description=("Visualization of infinite dimensional Ising model spin glass")
-        )
-        parser.add_argument("-N", type=int, default=4, help="Number of spins")
-        parser.add_argument(
-            "-loadBC", action="store_true", help="Load bond configuration"
-        )
-        parser.add_argument(
-            "-BC", type=str, default="101011", help="Bond Configuration"
-        )
-        args = parser.parse_args()
-
-        # Set these to True to see bipartitions or Energy info, respectively
-        ######################################################################
-        self.show_bps = False
-        self.show_Ens = True
-        ######################################################################
-
-        # Window size and label
-        self.title = "SGViz_InfD"
-        self.top = 50
-        self.left = 100
-        self.width = 1000
-        self.height = 750
-
-        self.loadBC = args.loadBC
-        self.BC = args.BC
-
-        (self.Swidth, self.Sheight) = scaleDims(self.width, self.height)
-
-        # Set initial parameters
-        self.N = args.N
-        self.seed = 0
-        self.G = tfim.Jij_instance(self.N, 1, "bimodal", self.seed, True)
-        if self.loadBC:
-            self.Jij = BCtoJij(args.N, str(self.BC))
-            self.G = JijtoG(self.Jij, self.N)
+        if load_bc:
+            self.jij = bond_config_to_jij(n, bond_config)
+            g = jij_to_g(self.jij)
         else:
-            self.Jij = makeJij(self.G, self.N)
+            g = tfim.Jij_instance(n, 1, "bimodal", SEED, True)
+            self.jij = g_to_jij(g)
 
-        if self.show_Ens:
-            self.lattice = tfim.Lattice([self.N])
-            self.basis = tfim.IsingBasis(self.lattice)
-            self.JZZ = tfim.JZZ_SK(self.basis, self.G)
-            self.ea = -(self.JZZ.diagonal())
-            self.gs = np.where(self.ea == self.ea.min())[0]
+        basis = tfim.IsingBasis(tfim.Lattice([n]))
+        self.energies = -tfim.JZZ_SK(basis, g).diagonal()
+        ground_states = np.flatnonzero(self.energies == self.energies.min())
 
-        self.cnfg = self.gs[0]
-        self.configuration = list(map(int, list(bin(self.cnfg)[2:].zfill(self.N))))
-        self.center = (500, 375)
-        self.coordList = spinCoords(self.N, self.center, 290)
-        combos = list(it.combinations([i for i in range(int(self.N))], int(self.N / 2)))
-        self.permlist = []
-        for i in range(int(len(combos) / 2)):
-            self.permlist.append(combos[i] + combos[int(len(combos)) - 1 - i])
-        self.pi = 0
-        self.p = self.permlist[self.pi]
+        angles = 2 * np.pi * np.arange(n) / n
+        self.spin_coords = [
+            QPointF(CENTER[0] - SPIN_RADIUS * np.cos(a), CENTER[1] - SPIN_RADIUS * np.sin(a))
+            for a in angles
+        ]
+        self.label_coords = [
+            (
+                int(CENTER[0] - 5 - LABEL_RADIUS * np.cos(a)),
+                int(CENTER[1] + 5 - LABEL_RADIUS * np.sin(a)),
+            )
+            for a in angles
+        ]
 
-        self.clear = False
+        available = set(QFontDatabase().families())
+        self.ui_font = next((f for f in UI_FONTS if f in available), self.font().family())
+        self.mono_font = QFontDatabase.systemFont(QFontDatabase.FixedFont).family()
 
-        self.setStyleSheet("background-color: white;")
+        self.state_value = self._label(mono=True)
+        self.energy_value = self._label()
+        self.sat_value = self._label()
+        self.unsat_value = self._label()
+        self.state_edit = QLineEdit()
+        self.state_edit.setPlaceholderText(f"0 – {2**n - 1}")
+        self.toggle_button = QPushButton("Hide")
+        self.toggle_button.clicked.connect(self.toggle_panel)
+        enter_button = QPushButton("Enter")
+        enter_button.clicked.connect(self.submit_state)
 
-        self.Ealabel = QLabel(self)
-        self.Enlabel = QLabel(self)
-        self.Clabel = QLabel(self)
-        self.cEdit = QLineEdit(self)
-        self.cLabel = QLabel(self)
-        self.countLabel = QLabel(self)
-        self.scountLabel = QLabel(self)
-        # self.sEdit = QLineEdit(self)
-        # self.sLabel = QLabel(self)
-        # self.pEdit = QLineEdit(self)
-        # self.pLabel = QLabel(self)
-        # self.NEdit = QLineEdit(self)
-        self.NLabel = QLabel(self)
-        self.pybutton = QPushButton("Enter", self)
-        self.pybutton.setStyleSheet(
-            "QPushButton {color: white; background-color: black}"
-        )
-        self.pybutton.clicked.connect(self.clickMethod)
-        self.Cpybutton = QPushButton("Clear", self)
-        self.Cpybutton.setStyleSheet(
-            "QPushButton {color: white; background-color: black}"
-        )
-        self.Cpybutton.clicked.connect(self.clearMethod)
-        self.Resizebutton = QPushButton("Resize", self)
-        self.Resizebutton.setStyleSheet(
-            "QPushButton {color: white; background-color: black}"
-        )
-        self.Resizebutton.clicked.connect(self.resizeMethod)
-        self.BCLabel = QLabel(self)
-        self.CLLabel = QLabel(self)
+        self.content = QWidget()
+        content = QVBoxLayout(self.content)
+        content.setContentsMargins(0, 0, 0, 0)
+        self.grid = QGridLayout()
+        self.grid.setColumnStretch(1, 1)
+        content.addLayout(self.grid)
+        self._add_section("System", [
+            ("Spins", self._label(str(n))),
+            ("Bond config", self._label(group_bits(bond_config[::-1]), mono=True)),
+        ])
+        self._add_section("Current state", [
+            ("Configuration", self.state_value),
+            ("Energy", self.energy_value),
+            ("Ground states", self._label(", ".join(map(str, ground_states)))),
+        ])
+        self._add_section("Bonds", [
+            ("Satisfied", self.sat_value),
+            ("Unsatisfied", self.unsat_value),
+        ])
+        self._add_section("Legend", [
+            (swatch("━━━", "red"), self._label("J = +1")),
+            (swatch("━━━", "blue"), self._label("J = −1")),
+            (swatch("╌╌╌", "#555"), self._label("Unsatisfied bond")),
+            (swatch("↑", "magenta") + " " + swatch("↓", "darkcyan"), self._label("Spin 1 / 0")),
+        ])
+        content.addStretch()
+        content.addWidget(self._label("GO TO STATE", "header"))
+        state_row = QHBoxLayout()
+        state_row.addWidget(self.state_edit)
+        state_row.addWidget(enter_button)
+        content.addLayout(state_row)
 
-        self.editLabels()
+        self.panel = QFrame(self)
+        self.panel.setObjectName("panel")
+        panel_layout = QVBoxLayout(self.panel)
+        title_row = QHBoxLayout()
+        title_row.addWidget(self._label("Spin Glass", "title"))
+        title_row.addStretch()
+        title_row.addWidget(self.toggle_button)
+        panel_layout.addLayout(title_row)
+        panel_layout.addWidget(self.content)
 
-        self.InitWindow()
+        self.setWindowTitle("SGViz_InfD")
+        self.set_state(int(ground_states[0]))
+        self.setGeometry(100, 50, BASE_WIDTH, BASE_HEIGHT)
 
-    def keyPressEvent(self, qKeyEvent):
-        if qKeyEvent.key() == QtCore.Qt.Key_Return:
-            self.clickMethod()
+    def _label(self, text="", name=None, mono=False):
+        label = QLabel(text)
+        label.setWordWrap(True)
+        if mono:
+            name = "mono"
+        if name:
+            label.setObjectName(name)
+        return label
 
-    def InitWindow(self):
-        self.setWindowTitle(self.title)
-        self.setGeometry(self.left, self.top, self.width, self.height)
-        self.show()
+    def _add_section(self, title, rows):
+        """Add a header plus key/value rows to the shared grid so columns line up."""
+        row = self.grid.rowCount()
+        self.grid.addWidget(self._label(title.upper(), "header"), row, 0, 1, 2)
+        for i, (key, value) in enumerate(rows, start=row + 1):
+            self.grid.addWidget(self._label(key, "key"), i, 0, Qt.AlignTop)
+            self.grid.addWidget(value, i, 1)
 
-    def clickMethod(self):
-        thread = threading.Thread(target=self.DynMethod())
-        thread.start()
+    def _style(self, s):
+        def px(v):
+            return f"{max(1, round(v * s))}px"
 
-    def resizeMethod(self):
-        self.width = self.size().width()
-        self.height = self.size().height()
-        (self.Swidth, self.Sheight) = scaleDims(self.width, self.height)
-        self.editLabels()
-        self.repaint()
+        return f"""
+            QWidget {{ font-family: "{self.ui_font}"; font-size: {px(14)}; color: #1d1d22; }}
+            QMainWindow {{ background: white; }}
+            QFrame#panel {{
+                background: #f7f7f9;
+                border: 1px solid #d4d4dc;
+                border-radius: {px(10)};
+            }}
+            QLabel#title {{ font-size: {px(19)}; font-weight: 600; }}
+            QLabel#header {{
+                font-size: {px(11)};
+                font-weight: 700;
+                color: #85858f;
+                padding-top: {px(12)};
+            }}
+            QLabel#key {{ color: #5b5b66; }}
+            QLabel#mono {{ font-family: "{self.mono_font}"; }}
+            QLineEdit {{
+                background: white;
+                border: 1px solid #c8c8d0;
+                border-radius: {px(5)};
+                padding: {px(4)} {px(6)};
+            }}
+            QPushButton {{
+                background: #1d1d22;
+                color: white;
+                border: none;
+                border-radius: {px(5)};
+                padding: {px(5)} {px(12)};
+            }}
+            QPushButton:hover {{ background: #3a3a44; }}
+        """
 
-    def clearMethod(self):
-        if not self.clear:
-            self.clear = True
-            self.Sheight += 99999
-            self.editLabels()
-            self.Sheight -= 99999
+    def set_state(self, state):
+        self.state = state
+        self.spins = [int(b) for b in format(state, f"0{self.n}b")]
+        sigma = [2 * s - 1 for s in self.spins]
+        self.unsatisfied = {
+            (i, j) for i, j in self.bonds if self.jij[i, j] * sigma[i] * sigma[j] < 0
+        }
+
+        self.state_value.setText(f"{''.join(map(str, self.spins))}  (#{state})")
+        self.energy_value.setText(f"{self.energies[state]:g}")
+        self.sat_value.setText(str(len(self.bonds) - len(self.unsatisfied)))
+        self.unsat_value.setText(str(len(self.unsatisfied)))
+        self.update()
+
+    def submit_state(self):
+        try:
+            state = int(self.state_edit.text())
+        except ValueError:
+            return
+        if 0 <= state < len(self.energies):
+            self.set_state(state)
+
+    def toggle_panel(self):
+        self.content.setHidden(not self.content.isHidden())
+        self.toggle_button.setText("Show" if self.content.isHidden() else "Hide")
+        self._layout()
+
+    def keyPressEvent(self, event):
+        if event.key() == Qt.Key_Return:
+            self.submit_state()
+
+    def resizeEvent(self, event):
+        self._layout()
+        super().resizeEvent(event)
+
+    def _layout(self):
+        s = self.scale = min(self.width() / BASE_WIDTH, self.height() / BASE_HEIGHT)
+        self.setStyleSheet(self._style(s))
+        margin = round(MARGIN * s)
+        self.panel.layout().setContentsMargins(margin, margin, margin, margin)
+        for layout in self.panel.findChildren(QLayout):
+            layout.setSpacing(round(6 * s))
+
+        if not self.content.isHidden():
+            height = round((BASE_HEIGHT - 2 * MARGIN) * s)
         else:
-            self.clear = False
-            self.editLabels()
-
-    def DynMethod(self):
-        change = False
-
-        # ns = self.NEdit.text()
-        # if len(ns) > 0:
-        # 	change = True
-        # 	n = int(ns)
-        # 	if n != self.N:
-        # 		self.N = n
-        # 		self.coordList = spinCoords(self.N, (500,375),300)
-        # 		lattice = tfim.Lattice([self.N])
-        # 		basis = tfim.IsingBasis(lattice)
-        # 		combos = list(it.combinations([i for i in range(int(self.N))],int(self.N / 2)))
-        # 		self.permlist = []
-        # 		for i in range(int(len(combos)/2)):
-        # 			self.permlist.append(combos[i] + combos[int(len(combos))-1-i])
-        # 		self.pi = 0
-        # 		self.p = self.permlist[self.pi]
-
-        # ss = self.sEdit.text()
-        # if len(ss) > 0:
-        # 	change = True
-        # 	s = int(ss)
-        # 	if s != self.seed:
-        # 		self.seed = s
-        # 		ss = self.sEdit.text()
-
-        cs = self.cEdit.text()
-        if len(cs) > 0:
-            change = True
-            c = int(cs)
-            if c != self.cnfg:
-                self.cnfg = c
-
-        if change:
-            self.G = tfim.Jij_instance(self.N, 1, "bimodal", self.seed, True)
-            if self.loadBC:
-                self.Jij = BCtoJij(self.N, str(self.BC))
-                self.G = JijtoG(self.Jij, self.N)
-            else:
-                self.Jij = makeJij(self.G, self.N)
-            self.configuration = list(map(int, list(bin(self.cnfg)[2:].zfill(self.N))))
-            self.Clabel.setText("Current State: " + str(self.configuration))
-
-            if self.show_Ens:
-                self.lattice = tfim.Lattice([self.N])
-                self.basis = tfim.IsingBasis(self.lattice)
-                self.JZZ = tfim.JZZ_SK(self.basis, self.G)
-                self.ea = -(self.JZZ.diagonal())
-                self.gs = np.where(self.ea == self.ea.min())[0]
-                self.Ealabel.setText("Ground States: " + str(self.gs))
-                self.Enlabel.setText("Current Energy: " + str(self.ea[self.cnfg]))
-
-        # ps = self.pEdit.text()
-        # if len(ps) > 0:
-        # 	bp = int(ps)
-        # 	if bp != self.pi:
-        # 		self.pi = bp
-        # 		self.p = self.permlist[self.pi]
-
-        self.repaint()
+            self.panel.layout().activate()
+            height = self.panel.sizeHint().height()
+        self.panel.setGeometry(margin, margin, round(PANEL_WIDTH * s), height)
 
     def paintEvent(self, event):
-        qp = QPainter()
-        qp.begin(self)
-        qp.scale(self.Swidth / 1000, self.Swidth / 1000)
-        qp.setPen(QPen(Qt.blue, 3))
-        self.drawBonds(qp, self.coordList, self.configuration)
-        self.drawSpins(qp, self.coordList)
-        self.labelSpins(qp, self.coordList)
-        self.drawConfiguration(qp, self.configuration, self.coordList)
+        qp = QPainter(self)
+        qp.scale(self.scale, self.scale)
+        self.draw_bonds(qp)
+        self.draw_spins(qp)
+        self.draw_spin_labels(qp)
+        self.draw_arrows(qp)
         qp.end()
 
-    def drawSpins(self, qp, coordList):
-        qp.setBrush(QBrush(QColor(0, 0, 0), Qt.SolidPattern))
-        for i in range(len(coordList) - 1, -1, -1):
-            qp.setPen(QPen(spinColor(self.p, i, self.show_bps), 5))
+    def draw_bonds(self, qp):
+        for i, j in self.bonds:
+            style = Qt.DashLine if (i, j) in self.unsatisfied else Qt.SolidLine
+            color = Qt.red if self.jij[i, j] == 1 else Qt.blue
+            qp.setPen(QPen(color, 5, style))
+            qp.drawLine(self.spin_coords[i], self.spin_coords[j])
 
-            c = coordList[i]
-            qp.drawEllipse(c - QPointF(25, 25), 50, 50)
-            # qp.drawEllipse(c[0] - 25, c[1] - 25, 50, 50)
+    def draw_spins(self, qp):
+        qp.setBrush(QColor(0, 0, 0))
+        for i in reversed(range(self.n)):
+            qp.setPen(QPen(spin_color(i, self.n), 5))
+            qp.drawEllipse(self.spin_coords[i], 25, 25)
 
-    def drawBonds(self, qp, coordList, config):
-        self.ubondCountArray = [0 for i in range(self.N)]
-        self.sbondCountArray = [0 for i in range(self.N)]
-        for i in range(self.N):
-            for j in range(i + 1, self.N):
-                if (
-                    int(self.Jij[i][j] * (2 * config[i] - 1) * (2 * config[j] - 1))
-                    == -1
-                ):
-                    self.ubondCountArray[i] += 1
-                    self.ubondCountArray[j] += 1
-                    qp.setPen(QPen(bondColor(self.Jij, i, j), 5, Qt.DashLine))
-                else:
-                    self.sbondCountArray[i] += 1
-                    self.sbondCountArray[j] += 1
-                    qp.setPen(QPen(bondColor(self.Jij, i, j), 5, Qt.SolidLine))
-                ci = coordList[i]
-                cj = coordList[j]
-                qp.drawLine(ci, cj)
-        self.countLabel.setText("Unsatisfied: " + str(sum(self.ubondCountArray) // 2))
-        self.scountLabel.setText("Satisfied: " + str(sum(self.sbondCountArray) // 2))
-
-    def labelSpins(self, qp, coordList):
+    def draw_spin_labels(self, qp):
         qp.setPen(Qt.black)
+        qp.setFont(QFont(self.ui_font, 15))
+        for i, (x, y) in enumerate(self.label_coords):
+            qp.drawText(x, y, str(i))
 
-        i = 0
-        for c in coordList:
-            angle = (2 * i * (np.pi)) / self.N
-            qp.setFont(QFont("Arial", 15))
-            # uncomment following line for labels
-            qp.drawText(
-                int(self.center[0] - 5 - 350 * np.cos(angle)),
-                int(self.center[1] + 5 - 350 * np.sin(angle)),
-                str(i),
-            )
-
-            i += 1
-
-    def drawConfiguration(self, qp, config, coordList):
-        i = 0
-        for c in coordList:
-            if config[i] == 1:
-                qp.setPen(QPen(Qt.magenta, 4))
-                self.drawArrow(qp, 1, c)
-            else:
-                qp.setPen(QPen(Qt.cyan, 4))
-                self.drawArrow(qp, -1, c)
-            i += 1
-
-    def drawArrow(self, qp, dir, coords):
-        qp.drawLine(coords + QPointF(0, dir * 15), coords - QPointF(0, dir * 15))
-        qp.drawLine(coords - QPointF(10, dir * 5), coords - QPointF(0, dir * 15))
-        qp.drawLine(coords + QPointF(10, -(dir * 5)), coords - QPointF(0, dir * 15))
-        # qp.drawLine(
-        #     coords[0], coords[1] + (dir * 15), coords[0], coords[1] - (dir * 15)
-        # )
-        # qp.drawLine(
-        #     coords[0] - 10, coords[1] - (dir * 5), coords[0], coords[1] - (dir * 15)
-        # )
-        # qp.drawLine(
-        #     coords[0] + 10, coords[1] - (dir * 5), coords[0], coords[1] - (dir * 15)
-        # )
-
-    def editLabels(self):
-        fontsize = int((self.Swidth / 1000) * 13)
-
-        if self.show_Ens:
-            self.Ealabel.setFont(QFont("Arial", fontsize))
-            self.Ealabel.setStyleSheet("color: black")
-            self.Ealabel.resize(int(0.3 * self.Swidth), int(0.04 * self.Sheight))
-            self.Ealabel.move(int(0.02 * self.Swidth), int(0.067 * self.Sheight))
-            self.Ealabel.setText("Ground States: " + str(self.gs))
-
-            self.Enlabel.setFont(QFont("Arial", fontsize))
-            self.Enlabel.setStyleSheet("color: black")
-            self.Enlabel.resize(int(0.2 * self.Swidth), int(0.04 * self.Sheight))
-            self.Enlabel.move(int(0.02 * self.Swidth), int(0.107 * self.Sheight))
-            self.Enlabel.setText("Current Energy: " + str(self.ea[self.cnfg]))
-
-        self.Clabel.setFont(QFont("Arial", fontsize))
-        self.Clabel.setStyleSheet("color: black")
-        self.Clabel.resize(int(0.4 * self.Swidth), int(0.04 * self.Sheight))
-        self.Clabel.move(int(0.7 * self.Swidth), int(0.023 * self.Sheight))
-        self.Clabel.setText("Current State: " + str(self.configuration))
-
-        self.cEdit.setStyleSheet("color: black")
-        self.cEdit.move(int(0.08 * self.Swidth), int(0.933 * self.Sheight))
-        self.cEdit.resize(int(0.1 * self.Swidth), int(0.043 * self.Sheight))
-
-        self.cLabel.setStyleSheet("color: black")
-        self.cLabel.setFont(QFont("Arial", fontsize))
-        self.cLabel.setText("State: ")
-        self.cLabel.move(int(0.02 * self.Swidth), int(0.93 * self.Sheight))
-        self.cLabel.resize(int(0.05 * self.Swidth), int(0.043 * self.Sheight))
-
-        self.countLabel.setStyleSheet("color: black")
-        self.countLabel.setFont(QFont("Arial", fontsize))
-        self.countLabel.setText("unsatisfied: ")
-        self.countLabel.move(int(0.02 * self.Swidth), int(0.267 * self.Sheight))
-        self.countLabel.resize(int(0.1 * self.Swidth), int(0.043 * self.Sheight))
-
-        self.scountLabel.setStyleSheet("color: black")
-        self.scountLabel.setFont(QFont("Arial", fontsize))
-        self.scountLabel.setText("satisfied: ")
-        self.scountLabel.move(int(0.02 * self.Swidth), int(0.333 * self.Sheight))
-        self.scountLabel.resize(int(0.1 * self.Swidth), int(0.043 * self.Sheight))
-
-        # self.sEdit.setStyleSheet("color: black")
-        # self.sEdit.move(0.08*self.Swidth, 0.867*self.Sheight)
-        # self.sEdit.resize(int(0.1*self.Swidth),int(0.043*self.Sheight))
-
-        # self.sLabel.setStyleSheet("color: black")
-        # self.sLabel.setFont(QFont('Arial', fontsize))
-        # self.sLabel.setText("Seed")
-        # self.sLabel.move(0.02*self.Swidth,0.867*self.Sheight)
-        # self.sLabel.resize(int(0.05*self.Swidth),int(0.043*self.Sheight))
-
-        # self.pEdit.setStyleSheet("color: black")
-        # self.pEdit.move(0.85*self.Swidth, 0.867*self.Sheight)
-        # self.pEdit.resize(int(0.1*self.Swidth),int(0.043*self.Sheight))
-
-        # self.pLabel.setStyleSheet("color: black")
-        # self.pLabel.setFont(QFont('Arial', fontsize))
-        # self.pLabel.setText("Bipartition")
-        # self.pLabel.move(0.74*self.Swidth,0.867*self.Sheight)
-        # self.pLabel.resize(int(0.075*self.Swidth),int(0.043*self.Sheight))
-
-        # self.NEdit.setStyleSheet("color: black")
-        # self.NEdit.move(0.08*self.Swidth, 0.8*self.Sheight)
-        # self.NEdit.resize(int(0.1*self.Swidth),int(0.043*self.Sheight))
-
-        self.NLabel.setStyleSheet("color: black")
-        self.NLabel.setFont(QFont("Arial", fontsize))
-        self.NLabel.setText("N: " + str(self.N))
-        self.NLabel.move(int(0.02 * self.Swidth), int(0.8 * self.Sheight))
-        self.NLabel.resize(int(0.05 * self.Swidth), int(0.043 * self.Sheight))
-
-        self.BCLabel.setStyleSheet("color: black")
-        self.BCLabel.setFont(QFont("Arial", fontsize))
-        self.BCLabel.setText("Bond Configuration: " + str(self.BC)[::-1])
-        self.BCLabel.move(int(0.7 * self.Swidth), int(0.1 * self.Sheight))
-        self.BCLabel.resize(int(0.3 * self.Swidth), int(0.043 * self.Sheight))
-
-        self.CLLabel.setStyleSheet("color: black")
-        self.CLLabel.setFont(QFont("Arial", fontsize))
-        self.CLLabel.setText(
-            "Bond List:\n"
-            + str(
-                np.array(
-                    [
-                        np.array(list(c))
-                        for c in it.combinations([i for i in range(self.N)], 2)
-                    ]
-                )
-            )
-        )
-        self.CLLabel.move(int(0.9 * self.Swidth), int(0.15 * self.Sheight))
-        self.CLLabel.resize(int(0.3 * self.Swidth), int(1 * self.Sheight))
-
-        self.pybutton.resize(int(0.1 * self.Swidth), int(0.043 * self.Sheight))
-        self.pybutton.move(int(0.3 * self.Swidth), int(0.933 * self.Sheight))
-
-        if not self.clear:
-            self.Cpybutton.resize(int(0.1 * self.Swidth), int(0.043 * self.Sheight))
-            self.Cpybutton.move(int(0.01 * self.Swidth), int(0.013 * self.Sheight))
-
-        self.Resizebutton.resize(int(0.1 * self.Swidth), int(0.043 * self.Sheight))
-        self.Resizebutton.move(int(0.12 * self.Swidth), int(0.013 * self.Sheight))
+    def draw_arrows(self, qp):
+        for spin, c in zip(self.spins, self.spin_coords):
+            qp.setPen(QPen(Qt.magenta if spin else Qt.cyan, 4))
+            d = 1 if spin else -1
+            tip = c - QPointF(0, 15 * d)
+            qp.drawLine(c + QPointF(0, 15 * d), tip)
+            qp.drawLine(c + QPointF(-10, -5 * d), tip)
+            qp.drawLine(c + QPointF(10, -5 * d), tip)
 
 
-def scaleDims(width, height):
-    if height / width > 00.75:
-        Swidth = width
-        Sheight = width * 0.75
-    elif height / width < 00.75:
-        Swidth = height / 0.75
-        Sheight = height
-    else:
-        Swidth = width
-        Sheight = height
-
-    return (Swidth, Sheight)
+def swatch(text, color):
+    return f'<span style="color: {color}; font-weight: 700;">{text}</span>'
 
 
-def spinCoords(N, center, r):
-    coords = []
-    for i in range(N):
-        angle = (2 * i * (np.pi)) / N
-        c = QPointF(
-            float(center[0] - r * np.cos(angle)), float(center[1] - r * np.sin(angle))
-        )
-        # x = QPointF(center[0] - r * np.cos(angle))
-        # y = QPointF(center[1] - r * np.sin(angle))
-        # c = (x, y)
-        coords.append(c)
-    return coords
+def group_bits(bits, size=4):
+    """Split a bit string into space-separated groups so it can wrap."""
+    return " ".join(bits[i : i + size] for i in range(0, len(bits), size))
 
 
-def makeJij(G, N):
-    """
-    Turns Jij matrix from form built in tfim.py to standard Jij where J[i][j] is the bond between spins i and j
-    """
-    Jij = np.zeros((N, N))
-    for j in range(N // 2):
-        for i in range(N):
-            Jij[i][(i - j + N - 1) % N] = Jij[(i - j + N - 1) % N][i] = G[j][i]
-    return Jij
+def g_to_jij(g):
+    """Convert the (N//2, N) coupling array from tfim.py to a symmetric Jij matrix."""
+    n = g.shape[1]
+    jij = np.zeros((n, n))
+    i = np.arange(n)
+    for j, row in enumerate(g):
+        k = (i - j - 1) % n
+        jij[i, k] = row
+        jij[k, i] = row
+    return jij
 
 
-def BCtoJij(N, BC):
-    clause_list = np.array(
-        [np.array(list(c)) for c in it.combinations([i for i in range(N)], 2)]
-    )
-    BCA = [int(i) for i in BC]
-    BCA.reverse()
-    Jij = np.zeros((N, N))
-    i = 0
-    for clause in clause_list:
-        Jij[clause[0]][clause[1]] = -1 + 2 * BCA[i]
-        Jij[clause[1]][clause[0]] = -1 + 2 * BCA[i]
-        i += 1
-    return Jij
+def jij_to_g(jij):
+    """Inverse of g_to_jij."""
+    n = len(jij)
+    i = np.arange(n)
+    return np.array([jij[i, (i - j - 1) % n] for j in range(n // 2)])
 
 
-def JijtoG(Jij, N):
-    G = np.empty((N // 2, N))
-    for j in range(N // 2):
-        for i in range(N):
-            G[j][i] = Jij[i][(i - j + N - 1) % N]
-    return G
+def bond_config_to_jij(n, bond_config):
+    """Build Jij from a bit string with one bit per bond, last bit = bond (0, 1)."""
+    jij = np.zeros((n, n))
+    for (i, j), bit in zip(it.combinations(range(n), 2), reversed(bond_config)):
+        jij[i, j] = jij[j, i] = 2 * int(bit) - 1
+    return jij
 
 
-def bondColor(Jij, i, j):
-    if Jij[i][j] == 1:
-        return Qt.red
-    else:
-        return Qt.blue
-
-
-# BIPARTITION COLOR
-
-
-def spinColor(p, i, show_bps):
-    if show_bps:
-        A = p[0 : len(p) // 2]
-        if i in A:
-            return Qt.yellow
-        else:
-            return Qt.green
-    else:
+def spin_color(i, n):
+    if not SHOW_BIPARTITION:
         return Qt.black
+    return Qt.yellow if i < n // 2 else Qt.green
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Visualization of infinite dimensional Ising model spin glass"
+    )
+    parser.add_argument("-N", type=int, default=4, help="Number of spins")
+    parser.add_argument("-loadBC", action="store_true", help="Load bond configuration")
+    parser.add_argument("-BC", type=str, default="101011", help="Bond Configuration")
+    args = parser.parse_args()
+
+    num_bonds = args.N * (args.N - 1) // 2
+    if args.loadBC and len(args.BC) != num_bonds:
+        parser.error(f"-BC must have {num_bonds} bits for N={args.N}")
+
+    app = QApplication(sys.argv)
+    window = Window(args.N, args.BC, args.loadBC)
+    window.show()
+    sys.exit(app.exec())
 
 
 if __name__ == "__main__":
